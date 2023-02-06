@@ -16,12 +16,6 @@ namespace TeamAssignment4A.Data.Repositories
                 .Include(exam => exam.ExamStems).FirstOrDefaultAsync(x => x.Id == id);
         }
         
-        public async Task<Exam>? GetByCert(Certificate certificate)
-        {
-            return await _db.Exams.Include(exam => exam.Certificate)
-                .Include(exam => exam.CandidateExams).Include(exam => exam.ExamStems)
-                .FirstOrDefaultAsync(exam => exam.Certificate == certificate);
-        }
 
         public async Task<IEnumerable<Exam>?> GetAllAsync()
         {
@@ -30,7 +24,8 @@ namespace TeamAssignment4A.Data.Repositories
         }
 
         public EntityState AddOrUpdate(Exam exam)
-        {            
+        {
+            var state = _db.Entry(exam).State;
             _db.Exams.Update(exam);
             return _db.Entry(exam).State;
         }

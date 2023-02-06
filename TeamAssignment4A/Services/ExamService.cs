@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using Fare;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TeamAssignment4A.Data;
 using TeamAssignment4A.Dtos;
 using TeamAssignment4A.Models;
@@ -21,6 +22,8 @@ namespace TeamAssignment4A.Services
             _mapper = mapper;
             _myDTO = new MyDTO();
         }
+
+        // Find a specific exam in the database using its Id
         public async Task<MyDTO> Get(int id)
         {
             if (id == null || _db.Exams == null || await _unit.Exam.GetAsync(id) == null)
@@ -40,6 +43,8 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // This method is used to find a specific exam in the database when you have already filled its
+        // Certificate field and want to fill the ExamStem field next
         public async Task<MyDTO> GetByExam(ExamDto examDto)
         {
             if (examDto.Id == null || _db.Exams == null || await _unit.Exam.GetAsync(examDto.Id) == null)
@@ -59,6 +64,7 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // Get all exams that exist in the database
         public async Task<IEnumerable<ExamDto>?> GetAll()
         {
             var exams = await _unit.Exam.GetAllAsync();
@@ -66,23 +72,27 @@ namespace TeamAssignment4A.Services
             return _myDTO.ExamDtos;
         } 
         
+        // Get all Stems for a specific Exam
         public async Task<IEnumerable<int>?> GetExamStemIds(ExamDto examDto)
         {
             Exam exam = _mapper.Map<Exam>(examDto);
             return await _unit.ExamStem.GetStemIdsByExam(exam);
         }
 
+        // Get all possible Stems for a specific Certificate of selected Exam
         public async Task<IEnumerable<int>?> GetStemIds(ExamDto examDto)
         {
             Exam exam = _mapper.Map<Exam>(examDto);
             return await _unit.Stem.GetStemIdsByCert(exam.Certificate);
         }
 
+        // Get all Certificates (in order to use it for the drop-down list
         public async Task<IEnumerable<Certificate>?> GetCerts()
         {
             return await _unit.Certificate.GetAllAsync();
         }
 
+        // Find the exam you want to update in the database
         public async Task<MyDTO> GetForUpdate(int id)
         {
             _myDTO.View = "Edit";
@@ -94,7 +104,7 @@ namespace TeamAssignment4A.Services
             }
             Exam exam = await _unit.Exam.GetAsync(id);
             _myDTO.ExamDto = _mapper.Map<ExamDto>(exam);
-            _myDTO.ExamDto.ExamStemIds = await _unit.ExamStem.GetStemIdsByExam(exam) as List<int>;
+            _myDTO.ExamDto.ExamStems = await _unit.ExamStem.GetStemsByExam(exam) as List<ExamStem>;
             if (_myDTO.ExamDto == null)
             {
                 _myDTO.View = "Index";
@@ -103,13 +113,14 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // Fill the Certificate field for the selected exam
         public async Task<MyDTO> AddCert(int id,
             [Bind("Id,TitleOfCertificate,Certificate,StemIds,Stems,ExamStemIds,ExamStems")] ExamDto examDto)
         {
             examDto.Certificate = await _unit.Certificate.GetAsyncByTilteOfCert(examDto.TitleOfCertificate);
             Exam exam = _mapper.Map<Exam>(examDto);
             _unit.Exam.AddOrUpdate(exam);
-
+            
             if (id != exam.Id)
             {                
                 _myDTO.View = "Create";
@@ -121,9 +132,8 @@ namespace TeamAssignment4A.Services
             {
                 _myDTO.Message = "The requested Title of Certificate has been added successfully.";
                 await _unit.SaveAsync();
-                _myDTO.View = "CreateExamStems";
-                examDto = _mapper.Map<ExamDto>(exam);
-                _myDTO.ExamDto = examDto;
+                _myDTO.View = "CreateExamStems"; 
+                _myDTO.ExamDto = _mapper.Map<ExamDto>(exam);
                 return _myDTO;
             }
             else
@@ -135,23 +145,19 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // Fill the ExamStem field for the selected exam 
         public async Task<MyDTO> AddStems(int id, 
             [Bind("Id,TitleOfCertificate,Certificate,StemIds,Stems,ExamStemIds,ExamStems")] ExamDto examDto)
-        {            
-            examDto.Certificate = await _unit.Certificate.GetAsyncByTilteOfCert(examDto.TitleOfCertificate);
-            Exam exam = _mapper.Map<Exam>(examDto);
-            _unit.Exam.AddOrUpdate(exam);
-                        
+        {    
+            Exam exam = await _unit.Exam.GetAsync(examDto.Id);
+                                    
             foreach (var stemId in examDto.StemIds)
             {
                 Stem stem = await _unit.Stem.GetAsync(stemId);
                 ExamStem examStem = new ExamStem(exam, stem);
                 _unit.ExamStem.AddOrUpdate(examStem);
-                await _unit.SaveAsync();
             }
-            Console.WriteLine(exam);
-            Console.WriteLine(exam);
-            exam.ExamStems = await _unit.ExamStem.GetStemsByExam(exam);
+            _unit.Exam.AddOrUpdate(exam);
 
             if (id != exam.Id)
             {                
@@ -182,23 +188,21 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // Update the ExamStems of the selected exam
         public async Task<MyDTO> Update(int id,
             [Bind("Id,TitleOfCertificate,Certificate,StemIds,Stems,ExamStemIds,ExamStems")] ExamDto examDto)
-        {            
-            examDto.Certificate = await _unit.Certificate.GetAsyncByTilteOfCert(examDto.TitleOfCertificate);
-            Exam exam = await _unit.Exam.GetByCert(examDto.Certificate);
-            exam.ExamStems = await _unit.ExamStem.GetStemsByExam(exam);            
-            
+        {             
+            Exam exam = await _unit.Exam.GetAsync(examDto.Id);
             List<int> stemIds = examDto.StemIds;
             examDto = _mapper.Map<ExamDto>(exam);
+            
             for(int i = 0; i < examDto.ExamStems.Count(); i++)
             { 
                 Stem stem = await _unit.Stem.GetAsync(stemIds[i]);
                 examDto.ExamStems[i].Stem = stem; 
                 exam = _mapper.Map<Exam>(examDto);
                 _unit.ExamStem.AddOrUpdate(exam.ExamStems.FirstOrDefault(x => x == examDto.ExamStems[i]));                
-            }
-            await _unit.SaveAsync();            
+            }       
 
             if (id != exam.Id)
             {                
@@ -229,6 +233,7 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // Find the exam you want to delete in the database
         public async Task<MyDTO> GetForDelete(int id)
         {
             _myDTO.View = "Delete";
@@ -252,6 +257,7 @@ namespace TeamAssignment4A.Services
             return _myDTO;
         }
 
+        // Delete the selected exam
         public async Task<MyDTO> Delete(int id)
         {
             _myDTO.View = "Index";
